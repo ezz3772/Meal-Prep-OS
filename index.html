@@ -342,7 +342,10 @@ function syncToCloud(data){
   clearTimeout(fbSyncTimer);
   fbSyncTimer = setTimeout(()=>{
     fbDb.collection('users').doc(CURRENT_UID).set({[FB_KEY]: data}, {merge:true})
-      .catch(err=>console.error('Cloud sync failed', err));
+      .catch(err=>{
+        console.error('Cloud sync failed', err);
+        alert('Cloud save failed: ' + err.code);
+      });
   }, 600);
 }
 
@@ -493,11 +496,9 @@ let saveTimer;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(doSave,800);}
 function doSave(){
   collectEdits();
-  try{
-    localStorage.setItem('mealPrepOS_v3',JSON.stringify(state));
-    showToast();
-    if(typeof syncToCloud==='function') syncToCloud(state);
-  }catch(e){}
+  try{ localStorage.setItem('mealPrepOS_v3',JSON.stringify(state)); }catch(e){}
+  showToast();
+  if(typeof syncToCloud==='function') syncToCloud(state);
 }
 function showToast(){
   const t=document.getElementById('save-toast');
@@ -522,12 +523,15 @@ function collectEdits(){
       state[cat][i].steps=[...card.querySelectorAll('.step-text')].map(e=>e.innerText.trim()).filter(Boolean);
     });
   });
-  // shopping
+  // shopping (saves text AND checked state)
   document.querySelectorAll('#shopping-list .shop-category').forEach((el,ci)=>{
     if(!state.shopping[ci])return;
     const ct=el.querySelector('.shop-cat-title');
     if(ct)state.shopping[ci].category=ct.innerText.trim();
-    state.shopping[ci].items=[...el.querySelectorAll('.shop-item-text')].map(e=>e.innerText.trim()).filter(Boolean);
+    state.shopping[ci].items=[...el.querySelectorAll('.shop-item')].map(it=>({
+      t: it.querySelector('.shop-item-text').innerText.trim(),
+      c: it.classList.contains('checked')
+    })).filter(o=>o.t);
   });
   // prep
   document.querySelectorAll('#prep-steps .prep-step').forEach((el,i)=>{
@@ -740,9 +744,13 @@ function renderShopping(){
   });
 }
 
-function makeShopItem(text){
+// item can be a plain string (old data) or {t:text, c:checked} (new data)
+function makeShopItem(item){
+  const text=typeof item==='string'?item:item.t;
+  const checked=typeof item==='object'&&item.c;
   const div=document.createElement('div');
   div.className='shop-item';
+  if(checked)div.classList.add('checked');
   const cb=document.createElement('div');
   cb.className='shop-checkbox';
   cb.onclick=()=>{div.classList.toggle('checked');scheduleSave();};
